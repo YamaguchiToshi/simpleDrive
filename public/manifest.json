@@ -1,0 +1,10 @@
+{
+  "name": "Joystick Driving Simulator",
+  "short_name": "SimpleDrive",
+  "start_url": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#1a1e24",
+  "theme_color": "#1a1e24",
+  "description": "3D Driving Simulator optimized for iPad pointing devices and joysticks."
+}

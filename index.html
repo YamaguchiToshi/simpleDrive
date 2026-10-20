@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Joystick Driving Simulator</title>
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SimpleDrive">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#1a1e24">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <!-- 3D WebGL Canvas -->
+  <div id="game-container">
+    <canvas id="webgl-canvas"></canvas>
+  </div>
+
+  <!-- Vector HUD Overlay (Pointer & Deadzone Indicator) -->
+  <svg id="hud-svg" aria-hidden="true">
+    <defs>
+      <!-- Glow filter for HUD vector -->
+      <filter id="hud-glow" x="-20%" y="-20%" width="140%" height="140%">
+        <feGaussianBlur stdDeviation="3" result="blur" />
+        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+      </filter>
+    </defs>
+    <!-- Crosshair guide lines -->
+    <line id="hud-crosshair-x" class="hud-crosshair" x1="0" y1="50%" x2="100%" y2="50%" />
+    <line id="hud-crosshair-y" class="hud-crosshair" x1="50%" y1="0" x2="50%" y2="100%" />
+
+    <!-- Direction labels -->
+    <text id="hud-label-up" class="hud-axis-label" x="50%" y="40%" text-anchor="middle">前進 ▲</text>
+    <text id="hud-label-down" class="hud-axis-label" x="50%" y="60%" text-anchor="middle">▼ 後退</text>
+    <text id="hud-label-left" class="hud-axis-label" x="40%" y="50%" text-anchor="middle" dominant-baseline="middle">◀ 左</text>
+    <text id="hud-label-right" class="hud-axis-label" x="60%" y="50%" text-anchor="middle" dominant-baseline="middle">右 ▶</text>
+
+    <!-- Center deadzone circle -->
+    <circle id="hud-deadzone-circle" cx="50%" cy="50%" r="50" />
+    <circle id="hud-deadzone-outer" cx="50%" cy="50%" r="100" />
+    <!-- Line from center to pointer -->
+    <line id="hud-vector-line" x1="50%" y1="50%" x2="50%" y2="50%" />
+    <!-- Pointer position indicator dot -->
+    <circle id="hud-pointer-dot" cx="50%" cy="50%" r="14" />
+    <!-- Neutral center dot -->
+    <circle id="hud-center-dot" cx="50%" cy="50%" r="4" />
+  </svg>
+
+  <!-- UI Top Bar -->
+  <header id="ui-top-bar">
+    <div class="hud-card speed-card">
+      <div class="hud-label">SPEED</div>
+      <div class="hud-value"><span id="speed-display">0</span> <span class="hud-unit">km/h</span></div>
+      <div class="gear-badge" id="gear-display">N</div>
+    </div>
+
+    <div class="hud-card score-card">
+      <div class="hud-label">STARS</div>
+      <div class="hud-value"><span class="star-icon">★</span> <span id="star-count">0</span></div>
+    </div>
+
+    <div class="hud-actions">
+      <!-- Gamepad Active Status Badge -->
+      <div id="gamepad-status-badge" class="gamepad-badge hidden" title="ゲームコントローラー認識中">
+        <span class="badge-dot"></span>
+        <span id="gamepad-badge-label">🎮 コントローラー</span>
+      </div>
+
+      <button id="btn-mode-toggle" class="btn-mode-toggle" aria-label="操作モード切り替え" title="操作モード切り替え">
+        <span id="mode-icon-gamepad" class="mode-icon">🎮</span>
+        <span id="mode-icon-joystick" class="mode-icon hidden">🕹️</span>
+        <span id="mode-icon-touch" class="mode-icon hidden">👆</span>
+        <span id="mode-text-label" class="mode-text">コントローラー</span>
+      </button>
+
+      <button id="btn-fullscreen-toggle" class="btn-icon" aria-label="全画面表示切り替え" title="全画面表示">
+        <svg id="icon-fs-enter" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z"/>
+        </svg>
+        <svg id="icon-fs-exit" class="hidden" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z"/>
+        </svg>
+      </button>
+
+      <button id="btn-sound-toggle" class="btn-icon" aria-label="サウンド切り替え" title="サウンド切り替え">
+        <svg id="sound-icon-on" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z"/>
+        </svg>
+        <svg id="sound-icon-off" class="hidden" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M16.5 12c0-1.77-1.02-3.29-2.5-4.03v2.21l2.45 2.45c.03-.2.05-.41.05-.63zm2.5 0c0 .94-.2 1.82-.54 2.64l1.51 1.51C20.63 14.91 21 13.5 21 12c0-4.28-2.99-7.86-7-8.77v2.06c2.89.86 5 3.54 5 6.71zM4.27 3L3 4.27l4.73 4.73H3v6h4l5 5v-6.73l4.25 4.25c-.67.52-1.42.93-2.25 1.18v2.06c1.38-.31 2.63-.95 3.69-1.81L19.73 21 21 19.73 4.27 3zM12 4L9.91 6.09 12 8.18V4z"/>
+        </svg>
+      </button>
+
+      <button id="btn-settings-open" class="btn-icon" aria-label="設定を開く" title="設定">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Horn notification indicator -->
+  <div id="horn-toast" class="horn-toast hidden">
+    <span>📢 プップー！</span>
+  </div>
+
+  <!-- Off-road warning indicator -->
+  <div id="offroad-banner" class="offroad-banner hidden">
+    <span>コース復帰中 (ソフトアシスト動作中)</span>
+  </div>
+
+  <!-- Start / Touch overlay prompt for iPad/Browser audio & pointer enablement -->
+  <div id="start-prompt" class="start-prompt">
+    <div class="prompt-box">
+      <h2>Joystick Drive</h2>
+      <p class="prompt-sub">Optima Joystick & iPad 対応 3D ドライブ</p>
+      <div class="prompt-instructions">
+        <div class="instruction-item">
+          <span class="instruction-badge">レバー前傾</span>
+          <span>前進（倒した角度に応じた速度）</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-badge">レバー左右</span>
+          <span>旋回（その場旋回も可能）</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-badge">中立（手放し）</span>
+          <span>自動停止（電動車いす同様の安全中立）</span>
+        </div>
+        <div class="instruction-item">
+          <span class="instruction-badge">ボタン/外部SW</span>
+          <span>クラクション（ホーン）鳴動 📢</span>
+        </div>
+      </div>
+      <p class="prompt-note">※ Optima Joystick（ゲームコントローラー／マウス）または画面タップで運転できます。<br>コントローラーはレバーを少し動かすと自動認識されます。</p>
+      <button id="btn-start" class="btn-primary">タップしてスタート</button>
+    </div>
+  </div>
+
+  <!-- Accessibility Settings Drawer -->
+  <div id="settings-backdrop" class="settings-backdrop hidden"></div>
+  <aside id="settings-drawer" class="settings-drawer" aria-hidden="true">
+    <div class="drawer-header">
+      <h2>運転設定 (アクセシビリティ)</h2>
+      <button id="btn-settings-close" class="btn-icon" aria-label="設定を閉じる">
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+        </svg>
+      </button>
+    </div>
+
+    <div class="drawer-content">
+      <!-- 1. Speed Limit -->
+      <section class="setting-group">
+        <label class="setting-title" id="lbl-speed">最高速度 (Speed Limit)</label>
+        <div class="segmented-control" role="radiogroup" aria-labelledby="lbl-speed">
+          <button type="button" class="segment-btn" data-setting="speedLimit" data-value="12">ゆっくり (12)</button>
+          <button type="button" class="segment-btn active" data-setting="speedLimit" data-value="22">ふつう (22)</button>
+          <button type="button" class="segment-btn" data-setting="speedLimit" data-value="32">はやい (32)</button>
+        </div>
+      </section>
+
+      <!-- 2. Deadzone Radius -->
+      <section class="setting-group">
+        <div class="setting-title-row">
+          <label for="input-deadzone" class="setting-title">デッドゾーン半径 (遊びの幅)</label>
+          <span id="deadzone-value-label" class="setting-value-badge">0.15</span>
+        </div>
+        <div class="slider-wrapper">
+          <input type="range" id="input-deadzone" min="0.05" max="0.35" step="0.01" value="0.15">
+          <div class="slider-marks">
+            <span>過敏 (0.05)</span>
+            <span>標準 (0.15)</span>
+            <span>広い (0.35)</span>
+          </div>
+        </div>
+        <p class="setting-hint">手ブレやスティックの中立位置の揺らぎを吸収します。</p>
+      </section>
+
+      <!-- 3. Steering Sensitivity -->
+      <section class="setting-group">
+        <label class="setting-title" id="lbl-steer">ステアリング感度 (曲がりやすさ)</label>
+        <div class="segmented-control" role="radiogroup" aria-labelledby="lbl-steer">
+          <button type="button" class="segment-btn" data-setting="steerSens" data-value="0.6">穏やか (0.6)</button>
+          <button type="button" class="segment-btn active" data-setting="steerSens" data-value="1.0">標準 (1.0)</button>
+          <button type="button" class="segment-btn" data-setting="steerSens" data-value="1.4">機敏 (1.4)</button>
+        </div>
+      </section>
+
+      <!-- 4. Soft Assist Level -->
+      <section class="setting-group">
+        <label class="setting-title" id="lbl-assist">コース復帰アシスト (Soft Assist)</label>
+        <div class="segmented-control" role="radiogroup" aria-labelledby="lbl-assist">
+          <button type="button" class="segment-btn" data-setting="assistLevel" data-value="off">オフ (Off)</button>
+          <button type="button" class="segment-btn active" data-setting="assistLevel" data-value="mild">標準 (Mild)</button>
+          <button type="button" class="segment-btn" data-setting="assistLevel" data-value="strong">強力 (Strong)</button>
+        </div>
+        <p class="setting-hint">コース外に出た際、急なカクつきなく自然にコース中心へ誘導します。</p>
+      </section>
+
+      <!-- 5. Input Mode (Gamepad vs Joystick vs Touch) -->
+      <section class="setting-group">
+        <label class="setting-title" id="lbl-inputmode">操作モード (入力方式)</label>
+        <div class="segmented-control" role="radiogroup" aria-labelledby="lbl-inputmode">
+          <button type="button" class="segment-btn active" data-setting="inputMode" data-value="gamepad">🎮 コントローラー</button>
+          <button type="button" class="segment-btn" data-setting="inputMode" data-value="joystick">🕹️ マウス/Delta</button>
+          <button type="button" class="segment-btn" data-setting="inputMode" data-value="touch">👆 画面タップ</button>
+        </div>
+        <p class="setting-hint">
+          <strong>🎮 コントローラー</strong>: Optima Joystick等のゲームパッド。倒し角がダイレクトに反映され、手を離すと安全自動停止。<br>
+          <strong>🕹️ マウス/Delta</strong>: USBマウスモード用（相対移動量検知）。<br>
+          <strong>👆 画面タップ</strong>: 画面を直接タッチ＆ドラッグして操作します。
+        </p>
+
+        <!-- Controller Device Info -->
+        <div class="controller-info-card">
+          <div class="controller-info-row">
+            <span class="info-label">コントローラー接続:</span>
+            <span id="controller-status-text" class="status-disconnected">未検出 (スティックを動かしてください)</span>
+          </div>
+          <div id="controller-details-row" class="controller-details hidden">
+            <span id="controller-device-name">--</span>
+          </div>
+        </div>
+
+        <!-- Optima Joystick Mode Guide -->
+        <div class="optima-guide-box">
+          <div class="optima-guide-title">📖 Optima Joystick のモード切替について</div>
+          <p>本製品は初期出荷時<strong>「マウスモード」</strong>になっています。<br>
+          <strong>【ゲームモードへの切替方法】</strong><br>
+          本体を接続した状態で、<strong>「赤ボタン」と「黄ボタン」を同時に約12秒間長押し</strong>してください。「ピピッ」と音が鳴るとゲームモードに切り替わります（戻す場合も同様です）。<br>
+          <span class="optima-guide-note">※当アプリはゲームモード・マウスモードのどちらでも自動認識して走行できます。</span></p>
+        </div>
+      </section>
+
+      <!-- 5. Neutral Spring Return (Electric Wheelchair interaction) -->
+      <section class="setting-group">
+        <label class="setting-title" id="lbl-neutral">中立復帰・自動停止 (手を離した検知)</label>
+        <div class="segmented-control" role="radiogroup" aria-labelledby="lbl-neutral">
+          <button type="button" class="segment-btn" data-setting="neutralReturn" data-value="off">オフ (保持)</button>
+          <button type="button" class="segment-btn active" data-setting="neutralReturn" data-value="180">標準 (180ms)</button>
+          <button type="button" class="segment-btn" data-setting="neutralReturn" data-value="100">はやい (100ms)</button>
+        </div>
+        <p class="setting-hint">※クリックロックは不要です。スティックを倒すだけで走行し、手を離すと安全に自動停止します。</p>
+      </section>
+
+      <!-- 5. Fullscreen Display Guide -->
+      <section class="setting-group">
+        <label class="setting-title">全画面表示 (iPad Safari)</label>
+        <div class="pwa-guide-box">
+          <p><strong>【さらに快適に遊ぶには】</strong><br>
+          iPad Safari の共有ボタン <span class="share-icon-badge">⎋</span> をタップし、<strong>「ホーム画面に追加」</strong>を行うと、アドレスバーのない完全な全画面アプリとして起動できます。</p>
+        </div>
+      </section>
+    </div>
+
+    <div class="drawer-footer">
+      <button id="btn-settings-done" class="btn-primary full-width">完了</button>
+    </div>
+  </aside>
+
+  <!-- Live Input Diagnostics / Activity Bar -->
+  <footer id="input-monitor-bar" class="input-monitor-bar" aria-live="polite">
+    <div class="monitor-inner">
+      <span class="monitor-badge" id="monitor-source">待機中</span>
+      <span class="monitor-coords" id="monitor-values">X: 0.00 | Y: 0.00</span>
+      <span class="monitor-detail" id="monitor-subtext">Optima Joystick を動かすと入力状況が表示されます</span>
+    </div>
+  </footer>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
